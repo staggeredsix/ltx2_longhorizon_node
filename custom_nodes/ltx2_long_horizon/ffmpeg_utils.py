@@ -1,10 +1,13 @@
-import json
 import os
 import shutil
 import subprocess
+import wave
 from typing import Iterable
 
-import cv2
+
+def _ensure_output_dir(out_path: str) -> None:
+    out_dir = os.path.dirname(out_path) or "."
+    os.makedirs(out_dir, exist_ok=True)
 
 
 def ffmpeg_available() -> bool:
@@ -19,6 +22,7 @@ def concat_mp4(paths: Iterable[str], out_path: str) -> bool:
     paths = [p for p in paths if p and os.path.exists(p)]
     if not paths:
         return False
+    _ensure_output_dir(out_path)
     if not ffmpeg_available():
         return _concat_mp4_opencv(paths, out_path)
     list_path = f"{out_path}.txt"
@@ -67,6 +71,7 @@ def concat_mp4(paths: Iterable[str], out_path: str) -> bool:
 
 
 def mux_wav_into_mp4(video_path: str, wav_path: str, out_path: str) -> bool:
+    _ensure_output_dir(out_path)
     if not ffmpeg_available():
         try:
             shutil.copyfile(video_path, out_path)
@@ -96,6 +101,7 @@ def concat_and_mux(video_paths: Iterable[str], wav_paths: Iterable[str], fps: in
     wav_paths = [p for p in wav_paths if p and os.path.exists(p)]
     if not video_paths:
         return False
+    _ensure_output_dir(out_path)
     if not ffmpeg_available():
         if not _concat_mp4_opencv(video_paths, out_path):
             return False
@@ -120,6 +126,8 @@ def concat_and_mux(video_paths: Iterable[str], wav_paths: Iterable[str], fps: in
         ]
         if wav_paths:
             audio_path = _concat_wav_ffmpeg(wav_paths, f"{out_path}.wav")
+            if not audio_path:
+                audio_path = _concat_wav_wave(wav_paths, f"{out_path}.wav")
             if audio_path:
                 cmd.extend(["-i", audio_path])
         cmd.extend(["-r", str(float(fps)), "-c:v", "libx264", "-pix_fmt", "yuv420p"])
@@ -172,8 +180,30 @@ def _concat_wav_ffmpeg(paths: list[str], out_path: str) -> str | None:
     return None
 
 
+def _concat_wav_wave(paths: list[str], out_path: str) -> str | None:
+    if not paths:
+        return None
+    try:
+        with wave.open(paths[0], "rb") as first:
+            params = first.getparams()
+        with wave.open(out_path, "wb") as out_wav:
+            out_wav.setparams(params)
+            for path in paths:
+                with wave.open(path, "rb") as in_wav:
+                    if in_wav.getparams()[:4] != params[:4]:
+                        return None
+                    out_wav.writeframes(in_wav.readframes(in_wav.getnframes()))
+        return out_path
+    except Exception:
+        return None
+
+
 def _concat_mp4_opencv(paths: list[str], out_path: str) -> bool:
     if not paths:
+        return False
+    try:
+        import cv2  # type: ignore
+    except Exception:
         return False
     cap0 = cv2.VideoCapture(paths[0])
     if not cap0.isOpened():
