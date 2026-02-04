@@ -4,13 +4,13 @@ This folder contains a standalone ComfyUI custom node package intended to be cop
 
 ## Install
 
-Symlink or copy into your ComfyUI `custom_nodes` directory:
+Use the helper script to symlink and install dependencies:
 
 ```
 ./install_comfy_node.sh /path/to/ComfyUI
 ```
 
-Or manually:
+Manual alternative:
 
 ```
 ln -s /path/to/gb10_attitude_gen/custom_nodes/ltx2_long_horizon /path/to/ComfyUI/custom_nodes/ltx2_long_horizon
@@ -31,12 +31,29 @@ Modes:
 
 ## Wiring to Official LTX-2 Template
 
-This node is an orchestrator. It does not implement LTX diffusion. It expects to call the official LTX-2 template's
-"one clip" generator.
+This node is an orchestrator. It does not implement LTX diffusion. It expects to run the official LTX-2 workflow
+through ComfyUI's HTTP API by default.
 
-### Direct-call (preferred)
+### Export the workflow JSON
 
-Set an environment variable pointing to a callable that can generate one chunk:
+1. Open the official LTX-2 workflow in ComfyUI.
+2. Click **Save (API Format)** or **Export (API)** to get the workflow JSON.
+3. Provide the JSON via:
+   - `workflow_json_path` (path to the file), or
+   - `workflow_json_text` (paste the JSON text into the node input).
+
+### Default (API) usage — no env vars needed
+
+Fill in **workflow_json_path** (or paste **workflow_json_text**) and leave:
+- `comfy_api_url` empty to auto-discover (tries 127.0.0.1:8188–8192)
+- `comfy_output_dir` empty if ComfyUI uses its default `./output` directory
+
+The node will inject `seed`, `fps`, and `num_frames` into the workflow and update the SaveVideo
+`filename_prefix` per chunk.
+
+### Direct-call (optional)
+
+If you want to bypass the API, set an environment variable pointing to a callable that generates one chunk:
 
 ```
 LTX2_LONG_HORIZON_CALLABLE=module:callable
@@ -53,18 +70,6 @@ It should return either:
 - `(video_path, audio_path)` tuple, or
 - `{"video_path": "...", "audio_path": "..."}` dict, or
 - a string path to the mp4.
-
-### API fallback (supported)
-
-If the direct call can't be resolved, the node can call ComfyUI's local API and run a workflow JSON:
-
-```
-LTX2_WORKFLOW_JSON=/path/to/official_ltx2_workflow.json
-COMFY_API_URL=http://127.0.0.1:8188
-```
-
-The workflow should already include the official LTX-2 template nodes. The controller updates `seed`, `fps`,
-and `num_frames` inputs if they exist in the workflow JSON.
 
 ## Constraints
 
